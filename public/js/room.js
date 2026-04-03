@@ -206,26 +206,19 @@ function setupSocket(password) {
     const tile = document.getElementById("tile-" + socketId);
     if (!tile) return;
 
-    // Force video element to re-render with updated track
     const video = tile.querySelector("video");
     if (!video) return;
 
-    const currentStream = video.srcObject;
-    if (currentStream) {
-      // Replace video element entirely to force refresh
-      const newVideo = document.createElement("video");
-      newVideo.setAttribute("autoplay", "");
-      newVideo.setAttribute("playsinline", "");
-      newVideo.srcObject = currentStream;
-      video.replaceWith(newVideo);
-      newVideo.play().catch(() => {});
-
-      if (isScreenSharing) {
-        newVideo.classList.add("screen-share");
-      } else {
-        newVideo.classList.remove("screen-share");
-      }
+    // Just update the CSS — the MediaStream is already updated by replaceTrack
+    if (isScreenSharing) {
+      video.classList.add("screen-share");
+    } else {
+      video.classList.remove("screen-share");
     }
+
+    // Re-trigger playback in case the track changed
+    video.muted = false;
+    video.play().catch(() => {});
   });
 
   socket.on("participants-update", (participants) => {
@@ -319,9 +312,14 @@ async function createOfferToPeer(peerId) {
       const data = peers.get(peerId);
       if (data) {
         data.stream = stream;
-        renderRemoteVideo(peerId, stream);
       }
+      renderRemoteVideo(peerId, stream);
     }
+  };
+
+  // When a track replaces (e.g. screen share → camera), update the video
+  pc.onnegotiationneeded = async () => {
+    console.log("negotiation needed for", peerId);
   };
 
   peers.set(peerId, { pc, stream: null });
@@ -364,8 +362,8 @@ async function handleIncomingOffer(offer, senderId) {
       const data = peers.get(senderId);
       if (data) {
         data.stream = stream;
-        renderRemoteVideo(senderId, stream);
       }
+      renderRemoteVideo(senderId, stream);
     }
   };
 
@@ -848,24 +846,32 @@ function toggleCamera() {
   socket.emit("media-state", { roomId, micOn: isMicOn, camOn: isCamOn });
 }
 
+// Track the active camera video track (so we can restore it after screen share)
+let activeCamTrack = null;
+
 async function toggleScreenShare() {
   if (!isScreenSharing) {
     try {
-      displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = stream.getVideoTracks()[0];
 
-      const screenVideoTrack = displayStream.getVideoTracks()[0];
       isScreenSharing = true;
       btnScreen.classList.add("screen-active");
+      displayStream = stream;
+
+      // Save current cam track before replacing
+      if (localStream && localStream.getVideoTracks().length > 0) {
+        activeCamTrack = localStream.getVideoTracks()[0];
+      }
 
       console.log("Screen share started, replacing tracks on", peers.size, "peer(s)");
 
-      // Replace video track on all peer connections
       for (const [peerId, data] of peers) {
         const senders = data.pc.getSenders();
         for (const sender of senders) {
           if (sender.track && sender.track.kind === "video") {
             try {
-              await sender.replaceTrack(screenVideoTrack);
+              await sender.replaceTrack(screenTrack);
               console.log("Replaced video track for peer", peerId);
             } catch (e) {
               console.error("Failed to replace track for", peerId, e);
@@ -874,12 +880,12 @@ async function toggleScreenShare() {
         }
       }
 
-      // Update local tile to show screen content
+      // Update local tile
       const localTile = document.getElementById("tile-local");
       if (localTile) {
         const existingVideo = localTile.querySelector("video");
         if (existingVideo) {
-          existingVideo.srcObject = displayStream;
+          existingVideo.srcObject = stream;
           existingVideo.classList.add("screen-share");
         }
       }
@@ -890,19 +896,11 @@ async function toggleScreenShare() {
         localStream.getVideoTracks().forEach((t) => (t.enabled = false));
       }
 
-      // Handle native stop (user clicks browser "Stop sharing" button)
-      screenVideoTrack.onended = () => {
+      // Handle native stop
+      screenTrack.onended = () => {
         stopScreenShare();
       };
-
-      const audioTrack = displayStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.onended = () => {
-          stopScreenShare();
-        };
-      }
     } catch (e) {
-      // User cancelled screen share picker
       console.log("Screen share cancelled:", e);
     }
   } else {
@@ -914,27 +912,50 @@ function stopScreenShare() {
   isScreenSharing = false;
   btnScreen.classList.remove("screen-active");
 
-  socket.emit("screenshare-update", { roomId, isScreenSharing: false });
-
   if (displayStream) {
     displayStream.getTracks().forEach((t) => t.stop());
   }
   displayStream = null;
 
-  if (localStream && localStream.getVideoTracks().length > 0) {
-    const camTrack = localStream.getVideoTracks()[0];
-    camTrack.enabled = true;
+  socket.emit("screenshare-update", { roomId, isScreenSharing: false });
 
-    for (const [, data] of peers) {
-      for (const sender of data.pc.getSenders()) {
-        if (sender.track && sender.track.kind === "video") {
-          sender.replaceTrack(camTrack);
+  if (!activeCamTrack || activeCamTrack.readyState !== "live") {
+    // Cam track no longer valid, request a fresh one
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false })
+      .then((stream) => {
+        const newCamTrack = stream.getVideoTracks()[0];
+        // Replace in localStream
+        if (localStream) {
+          localStream.getVideoTracks().forEach((t) => localStream.removeTrack(t));
+          localStream.addTrack(newCamTrack);
+          newCamTrack.enabled = true;
         }
+        activeCamTrack = newCamTrack;
+        // Replace on all peer senders
+        replaceCamOnAllPeers(newCamTrack);
+        // Restore local tile
+        restoreLocalVideoTile();
+      })
+      .catch((e) => console.error("Failed to restore camera after screen share:", e));
+  } else {
+    activeCamTrack.enabled = true;
+    replaceCamOnAllPeers(activeCamTrack);
+    restoreLocalVideoTile();
+  }
+}
+
+function replaceCamOnAllPeers(camTrack) {
+  for (const [, data] of peers) {
+    for (const sender of data.pc.getSenders()) {
+      if (sender.track && sender.track.kind === "video") {
+        sender.replaceTrack(camTrack).catch(() => {});
       }
     }
   }
+}
 
-  // Restore local tile to camera
+function restoreLocalVideoTile() {
   const localTile = document.getElementById("tile-local");
   if (localTile && localStream) {
     const video = localTile.querySelector("video");
