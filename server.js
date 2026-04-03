@@ -64,7 +64,7 @@ app.use(express.static("public"));
 
 // Socket.io
 io.on("connection", (socket) => {
-const MEETING_PASSWORD = "Lilondstitchtheauthenticwatchablecrap";
+const MEETING_PASSWORD = "123forfivesix";
 
   socket.on("join-room", ({ roomId, name, password }) => {
     if (password !== MEETING_PASSWORD) {
