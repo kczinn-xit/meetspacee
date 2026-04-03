@@ -788,14 +788,41 @@ function toggleCamera() {
     }
     updateLocalVideo();
   } else {
+    // Re-enable the existing track, or request a new one if it failed
+    if (localStream && localStream.getVideoTracks().length > 0) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack.readyState === "live") {
+        videoTrack.enabled = true;
+        isCamOn = true;
+        updateLocalVideo();
+
+        for (const [, data] of peers) {
+          for (const sender of data.pc.getSenders()) {
+            if (sender.track && sender.track.kind === "video") {
+              sender.replaceTrack(videoTrack);
+            }
+          }
+        }
+
+        const iconOn = btnCam.querySelector(".icon-cam");
+        const iconOff = btnCam.querySelector(".icon-cam-off");
+        iconOn.classList.toggle("hidden", !isCamOn);
+        iconOff.classList.toggle("hidden", isCamOn);
+        btnCam.classList.toggle("muted", !isCamOn);
+        socket.emit("media-state", { roomId, micOn: isMicOn, camOn: isCamOn });
+        return;
+      }
+    }
+
     navigator.mediaDevices
       .getUserMedia({ video: true })
       .then((stream) => {
         const videoTrack = stream.getVideoTracks()[0];
+        // Remove stale video tracks before adding the new one
         if (localStream) {
+          localStream.getVideoTracks().forEach((t) => localStream.removeTrack(t));
           localStream.addTrack(videoTrack);
         } else {
-          // Create a new stream with just video
           localStream = stream;
         }
         isCamOn = true;
