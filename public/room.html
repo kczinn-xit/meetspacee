@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MeetSpace</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🟣</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/room.css" />
+</head>
+<body>
+
+  <!-- Name Modal -->
+  <div id="name-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-logo"></div>
+      <h2>Enter your name</h2>
+      <p class="modal-sub">You won't be asked again</p>
+      <input type="text" id="modal-name-input" placeholder="Your display name" autocomplete="off" maxlength="30" />
+      <input type="password" id="modal-password-input" placeholder="Meeting password" autocomplete="off" />
+      <button id="modal-join-btn" class="btn-modal">Join Meeting</button>
+      <p id="modal-error" class="error-msg hidden"></p>
+    </div>
+  </div>
+
+  <!-- Room Container -->
+  <div id="room-container" class="room-container hidden">
+
+    <!-- Header -->
+    <header class="room-header">
+      <div class="header-left">
+        <span class="room-id" id="header-room-id"></span>
+        <button id="copy-room-link" class="btn-glass" title="Copy room link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        </button>
+        <span id="header-connection" class="header-status"></span>
+      </div>
+      <div class="header-right">
+        <span id="rec-badge" class="rec-badge hidden">REC</span>
+        <span id="header-peers" class="header-peers"></span>
+        <button id="leave-btn" class="btn btn-danger">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Leave
+        </button>
+      </div>
+    </header>
+
+    <!-- Video Grid -->
+    <div id="video-grid" class="video-grid">
+      <!-- Local tile injected by JS -->
+      <!-- Remote tiles injected by JS -->
+    </div>
+
+    <!-- Empty Room State -->
+    <div id="empty-state" class="empty-state hidden">
+      <div class="empty-icon"></div>
+      <h2>Waiting for others to join</h2>
+      <p>Share the link so people can join this meeting</p>
+      <div class="share-row">
+        <span id="share-code"></span>
+        <button id="share-copy" class="btn-glass" title="Copy code">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div id="controls" class="controls-bar">
+      <button id="btn-mic" class="ctrl-btn" title="Toggle microphone">
+        <svg class="icon-mic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <svg class="icon-mic-off hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2c0 .89-.17 1.74-.48 2.52M12 19v4M8 23h8"/></svg>
+      </button>
+      <button id="btn-cam" class="ctrl-btn" title="Toggle camera">
+        <svg class="icon-cam" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <svg class="icon-cam-off hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.66 5.38L8.44 5C7.12 4.78 5.57 5.44 5.57 7.18V16.64c0 1.74 1.55 2.4 2.87 2.18l2.22-.38"/><line x1="1" y1="1" x2="23" y2="23"/><path d="M23 7l-4.5 3M16 12l-4.6 3.7M23 17c-.7.5-1.68.44-2.3-.16L18 14"/><rect x="1" y="5" width="10" height="14" rx="2"/></svg>
+      </button>
+      <button id="btn-screen" class="ctrl-btn" title="Share screen">
+        <svg class="icon-screen" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </button>
+      <button id="btn-hand" class="ctrl-btn" title="Raise hand">
+        <svg class="icon-hand" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 00-4 0"/><path d="M14 10V4a2 2 0 00-4 0v2"/><path d="M10 10.5V6a2 2 0 00-4 0v8"/><path d="M18 8a2 2 0 114 0v6a8 8 0 01-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 012.83-2.83L7 15"/></svg>
+      </button>
+      <div class="ctrl-divider"></div>
+      <button id="btn-chat" class="ctrl-btn" title="Open chat">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      </button>
+      <button id="btn-people" class="ctrl-btn" title="Participants">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      </button>
+      <div class="ctrl-divider"></div>
+      <button id="btn-record" class="ctrl-btn" title="Start recording">
+        <svg class="icon-rec" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+      </button>
+    </div>
+
+    <!-- Chat Panel -->
+    <div id="chat-panel" class="side-panel hidden">
+      <div class="panel-header">
+        <h3>Chat</h3>
+        <button id="chat-close" class="panel-close-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+        <button id="chat-send" class="btn-chat-send">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Participants Panel -->
+    <div id="people-panel" class="side-panel hidden">
+      <div class="panel-header">
+        <h3>Participants</h3>
+        <button id="people-close" class="panel-close-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="participants-list" class="participants-list"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/recorder.js"></script>
+  <script src="/js/room.js"></script>
+</body>
+</html>
