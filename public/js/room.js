@@ -558,6 +558,15 @@ function renderRemoteVideo(socketId, stream) {
 
   videoGrid.appendChild(tile);
   updateLayout();
+
+  // Hide the connecting indicator if the connection is already established
+  // (ontrack can fire after onconnectionstatechange already reached connected)
+  const peerDataLate = peers.get(socketId);
+  const pc = peerDataLate ? peerDataLate.pc : null;
+  if (pc) {
+    console.log("renderRemoteVideo", socketId, "pc.connectionState:", pc.connectionState);
+    updateTileConnection(socketId, pc.connectionState);
+  }
 }
 
 function updateRemoteTileIcons(socketId, micOn, camOn) {
