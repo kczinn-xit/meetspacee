@@ -52,9 +52,8 @@ let isScreenSharing = false;
 let displayStream = null; // keep reference to stop it later
 let isRecording = false;
 
-// Screen share layout: who is presenting
-let presenterId = null; // socketId of who is sharing screen
-let pinnedTile = null; // socketId of manually pinned tile (user clicked it)
+// Screen share: track who is presenting
+let presenterId = null;
 
 const recorder = new RecordingManager();
 
@@ -693,190 +692,75 @@ function updateGridLayout(count) {
   if (count <= 0) count = 1;
   if (count > 6) count = 6;
   videoGrid.className = "video-grid";
-  if (presenterId && !pinnedTile) {
-    videoGrid.classList.add("layout-" + count);
-    updateScreenShareLayout();
-  } else {
-    videoGrid.classList.add("layout-" + count);
-  }
+  videoGrid.classList.add("layout-" + count);
+  updateScreenShareLayout();
 }
 
 // ============================================================
-// Screen Share Layout (Google Meet style)
+// Screen Share Layout (Google Meet style - CSS only)
 // ============================================================
 
 function updateScreenShareLayout() {
-  const isPresenting = !!presenterId;
-
-  if (!isPresenting) {
-    // Restore normal grid
-    videoGrid.classList.remove("screenshare-active");
-    const count = videoGrid.querySelectorAll(".video-tile").length;
-    updateGridLayout(count || 1);
-    return;
-  }
-
-  // If we have a presenter, switch to screen share layout
-  videoGrid.classList.add("screenshare-active");
-  videoGrid.classList.add("layout-2"); // override to ensure we have space
-
-  // Check if layout is already applied
-  const mainEl = document.getElementById("screenshare-main-wrapper");
-  if (!mainEl) {
-    // First time: restructure the DOM
-    buildScreenShareLayout();
-  } else {
-    // Update: move tiles between main and strip
-    moveTilesToScreenShareLayout();
-  }
-}
-
-function buildScreenShareLayout() {
-  // Remove any prior structure
-  const existingMain = document.getElementById("screenshare-main-wrapper");
-  const existingStrip = document.getElementById("screenshare-strip-wrapper");
-  if (existingMain) existingMain.remove();
-  if (existingStrip) existingStrip.remove();
-
-  // Create the main screen area (presenter's screen)
-  const mainWrapper = document.createElement("div");
-  mainWrapper.id = "screenshare-main-wrapper";
-  mainWrapper.className = "screenshare-main";
-
-  // Create the bottom strip (other participants)
-  const stripWrapper = document.createElement("div");
-  stripWrapper.id = "screenshare-strip-wrapper";
-  stripWrapper.className = "screenshare-strip";
-
-  // Reorder: grid gets main first, strip second
-  videoGrid.style.display = "flex";
-  videoGrid.style.flexDirection = "column";
-  videoGrid.style.gap = "0.5rem";
-  videoGrid.style.padding = "0";
-  videoGrid.style.alignContent = "stretch";
-  videoGrid.appendChild(mainWrapper);
-  videoGrid.appendChild(stripWrapper);
-
-  moveTilesToScreenShareLayout();
-}
-
-function moveTilesToScreenShareLayout() {
-  const mainWrapper = document.getElementById("screenshare-main-wrapper");
-  const stripWrapper = document.getElementById("screenshare-strip-wrapper");
-  if (!mainWrapper || !stripWrapper) return;
-
-  const allTiles = [...videoGrid.querySelectorAll(".video-tile")];
-
-  for (const tile of allTiles) {
-    // Skip if already in the right place
-    if (tile === mainWrapper || tile === stripWrapper) continue;
-
-    // Determine where the tile should go
-    if (tile.id === "tile-" + presenterId || tile.id === "tile-" + pinnedTile) {
-      // Presenter tile goes to main
-      if (tile.parentElement !== mainWrapper) {
-        mainWrapper.appendChild(tile);
-        tile.style.border = "none";
-        tile.style.borderRadius = "16px";
-      }
+  const allTiles = videoGrid.querySelectorAll(".video-tile");
+  allTiles.forEach((tile) => {
+    const tileUserId = tile.id.replace("tile-", "");
+    if (tileUserId === presenterId) {
+      tile.classList.add("ss-main");
+      tile.classList.remove("ss-strip-tile");
+      tile.style.order = "0";
+      tile.style.cursor = "default";
+      tile.onclick = null;
     } else {
-      // Everyone else goes to the strip
-      if (tile.parentElement !== stripWrapper) {
-        stripWrapper.appendChild(tile);
-        tile.style.border = "2px solid transparent";
-        tile.style.borderRadius = "10px";
-        tile.style.cursor = "pointer";
-
-        // Click on strip tile to pin/enlarge
-        tile.onclick = (e) => {
-          e.preventDefault();
-          tilePinToMain(tile.id.replace("tile-", ""), tile);
-        };
-      }
+      tile.classList.remove("ss-main");
+      tile.classList.add("ss-strip-tile");
+      tile.style.order = "1";
+      tile.style.cursor = "pointer";
+      // Click any strip tile to pin it as main
+      tile.onclick = (e) => {
+        e.preventDefault();
+        allTiles.forEach((t) => t.classList.remove("ss-pinned"));
+        tile.classList.toggle("ss-pinned");
+        if (tile.classList.contains("ss-pinned")) {
+          // Make this tile big
+          tile.style.order = "0";
+          tile.style.flex = "1 1 100%";
+          // Make presenter small
+          const presTile = document.getElementById("tile-" + presenterId);
+          if (presTile) {
+            presTile.style.order = "1";
+            presTile.style.flex = "";
+          }
+        } else {
+          // Restore presenter as main
+          tile.style.flex = "";
+          tile.style.order = "1";
+          const presTile = document.getElementById("tile-" + presenterId);
+          if (presTile) {
+            presTile.style.order = "0";
+            presTile.style.flex = "1 1 100%";
+          }
+        }
+      };
     }
-  }
+  });
 
-  // Make main tile clickable to unpin
-  const mainTile = mainWrapper.querySelector(".video-tile");
-  if (mainTile && !mainTile.dataset.unpinHandler) {
-    mainTile.dataset.unpinHandler = "true";
-    mainTile.onclick = () => {
-      unpinTile();
-    };
-  }
-}
-
-function tilePinToMain(socketId, tile) {
-  // If already pinned, unpin
-  if (pinnedTile === socketId) {
-    unpinTile();
-    return;
-  }
-
-  pinnedTile = socketId;
-
-  // Move this tile to main, presenter to strip
-  const mainWrapper = document.getElementById("screenshare-main-wrapper");
-  const stripWrapper = document.getElementById("screenshare-strip-wrapper");
-  if (!mainWrapper || !stripWrapper) return;
-
-  // Move pinned tile to main
-  mainWrapper.appendChild(tile);
-  tile.style.border = "2px solid #4f6ef7";
-  tile.style.borderRadius = "16px";
-
-  // Show presenter badge if no presenter
-  if (!presenterId) {
-    const existingBadge = mainWrapper.querySelector(".presenter-badge");
-    if (!existingBadge) {
-      const badge = document.createElement("div");
-      badge.className = "presenter-badge";
-      badge.style.background = "rgba(79, 110, 247, 0.9)";
-      const name = participantNames.get(socketId) || "Participant";
-      badge.textContent = name;
-      tile.appendChild(badge);
-    }
-  }
-
-  // Move presenter back to strip if they were in main
+  // Apply grid layout for screen share
   if (presenterId) {
-    const presenterTile = document.getElementById("tile-" + presenterId);
-    if (presenterTile && presenterTile.parentElement === mainWrapper) {
-      stripWrapper.appendChild(presenterTile);
-    }
+    videoGrid.style.display = "flex";
+    videoGrid.style.flexDirection = "column";
+    videoGrid.style.padding = "0";
+  } else {
+    videoGrid.style.display = "";
+    videoGrid.style.flexDirection = "";
+    videoGrid.style.padding = "";
+    allTiles.forEach((tile) => {
+      tile.classList.remove("ss-main", "ss-strip-tile", "ss-pinned");
+      tile.style.order = "";
+      tile.style.flex = "";
+      tile.style.cursor = "";
+      tile.onclick = null;
+    });
   }
-}
-
-function unpinTile() {
-  pinnedTile = null;
-
-  const mainWrapper = document.getElementById("screenshare-main-wrapper");
-  const stripWrapper = document.getElementById("screenshare-strip-wrapper");
-  if (!mainWrapper || !stripWrapper) {
-    updateScreenShareLayout();
-    return;
-  }
-
-  // Remove any badge we added when pinning
-  const mainTile = mainWrapper.querySelector(".video-tile");
-  if (mainTile) {
-    const badge = mainTile.querySelector(".presenter-badge");
-    if (badge && badge.style.background.includes("79, 110, 247")) {
-      badge.remove();
-    }
-    mainTile.onclick = () => unpinTile();
-  }
-
-  // Restore presenter back to main
-  if (presenterId) {
-    const presenterTile = document.getElementById("tile-" + presenterId);
-    if (presenterTile && presenterTile.parentElement !== mainWrapper) {
-      mainWrapper.prependChild(presenterTile);
-    }
-  }
-
-  // Rebuild the layout
-  moveTilesToScreenShareLayout();
 }
 
 // ============================================================
