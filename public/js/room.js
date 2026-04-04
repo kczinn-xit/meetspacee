@@ -139,7 +139,10 @@ async function startMeeting(password) {
 // ============================================================
 
 function setupSocket(password) {
-  socket = io();
+  socket = io({
+    transports: ["websocket"],
+    timeout: 10000,
+  });
 
   socket.on("connect", () => {
     socket.emit("join-room", { roomId, name: displayName, password });
