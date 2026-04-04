@@ -13,6 +13,9 @@ const peers = new Map();
 // Track participant names separately (before we have peer connections)
 const participantNames = new Map();
 
+// Track which peers already have a rendered tile (prevent duplicate ontrack calls)
+const renderedPeers = new Set();
+
 // DOM refs
 const videoGrid = document.getElementById("video-grid");
 const emptyState = document.getElementById("empty-state");
@@ -562,10 +565,20 @@ function renderRemoteVideo(socketId, stream) {
   if (tile) {
     const video = tile.querySelector("video");
     if (video) {
+      // Tile already exists, just update the stream
       video.srcObject = stream;
       video.play().catch(() => {});
       return;
     }
+    // Tile exists but no video element yet — add one
+    const newVideo = document.createElement("video");
+    newVideo.setAttribute("autoplay", "");
+    newVideo.setAttribute("playsinline", "");
+    newVideo.srcObject = stream;
+    newVideo.muted = false;
+    tile.prepend(newVideo);
+    newVideo.play().catch(() => {});
+    return;
   }
 
   tile = document.createElement("div");
