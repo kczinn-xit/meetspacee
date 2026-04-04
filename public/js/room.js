@@ -603,10 +603,13 @@ function toggleRemoteHand(socketId, raised) {
 function updateTileConnection(socketId, state) {
   const connEl = document.getElementById("tile-conn-" + socketId);
   if (!connEl) return;
+  console.log("updateTileConnection", socketId, "state:", state);
   if (state === "connected" || state === "completed") {
-    connEl.remove();
+    connEl.style.transition = "opacity 0.3s";
+    connEl.style.opacity = "0";
+    setTimeout(() => connEl.remove(), 300);
   } else if (state === "disconnected" || state === "failed") {
-    connEl.textContent = "Reconnecting…";
+    connEl.textContent = "Disconnected";
     connEl.style.color = "#e05252";
   } else {
     connEl.textContent = "Connecting…";
