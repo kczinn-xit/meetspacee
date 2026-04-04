@@ -333,21 +333,26 @@ async function createOfferToPeer(peerId) {
     updateTileConnection(peerId, pc.connectionState);
   };
 
-  // Incoming tracks
+  // Incoming tracks — collect ALL tracks into one stream
   pc.ontrack = (e) => {
     console.log("ontrack for", peerId, "kind:", e.track.kind, "state:", e.track.readyState);
+    const data = peers.get(peerId);
+    if (data && data.stream) {
+      // Already have a stream — add this track to it
+      const hasTrack = data.stream.getTracks().some(t => t.id === e.track.id || t.kind === e.track.kind);
+      if (!hasTrack) {
+        data.stream.addTrack(e.track);
+        renderRemoteVideo(peerId, data.stream);
+      }
+      return;
+    }
+    // First track — create a new stream. If browser provided one, use it.
     let stream = e.streams && e.streams[0];
     if (!stream) {
-      // Some browsers don't include streams in ontrack
       stream = new MediaStream([e.track]);
     }
-    if (stream) {
-      const data = peers.get(peerId);
-      if (data) {
-        data.stream = stream;
-      }
-      renderRemoteVideo(peerId, stream);
-    }
+    if (data) data.stream = stream;
+    renderRemoteVideo(peerId, stream);
   };
 
   // Guard: if ontrack fires after 3s the badge is still there, force-hide it
