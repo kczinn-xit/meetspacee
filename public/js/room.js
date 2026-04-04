@@ -55,9 +55,6 @@ let isScreenSharing = false;
 let displayStream = null; // keep reference to stop it later
 let isRecording = false;
 
-// Screen share: track who is presenting
-let presenterId = null;
-
 const recorder = new RecordingManager();
 
 // ============================================================
@@ -222,41 +219,19 @@ function setupSocket(password) {
   });
 
   socket.on("screenshare-update", ({ socketId, isScreenSharing }) => {
-    console.log("Peer", socketId, "screen share:", isScreenSharing);
     const tile = document.getElementById("tile-" + socketId);
-
-    if (isScreenSharing) {
-      // Mark this user as the presenter
-      presenterId = socketId;
-      // Update the tile's video to contain mode
-      if (tile) {
-        const video = tile.querySelector("video");
-        if (video) {
+    if (tile) {
+      const video = tile.querySelector("video");
+      if (video) {
+        if (isScreenSharing) {
           video.classList.add("screen-share");
-          video.muted = false;
-          video.play().catch(() => {});
+        } else {
+          video.classList.remove("screen-share");
         }
-      }
-      // Add presenter badge
-      if (tile && !tile.querySelector(".presenter-badge")) {
-        const badge = document.createElement("div");
-        badge.className = "presenter-badge";
-        const name = participantNames.get(socketId) || "Participant";
-        badge.textContent = name + " is presenting";
-        tile.appendChild(badge);
-      }
-    } else {
-      // Remove presenter state
-      if (presenterId === socketId) presenterId = null;
-      if (tile) {
-        const badge = tile.querySelector(".presenter-badge");
-        if (badge) badge.remove();
-        const video = tile.querySelector("video");
-        if (video) video.classList.remove("screen-share");
+        video.muted = false;
+        video.play().catch(() => {});
       }
     }
-
-    updateScreenShareLayout();
   });
 
   socket.on("participants-update", (participants) => {
@@ -706,74 +681,6 @@ function updateGridLayout(count) {
   if (count > 6) count = 6;
   videoGrid.className = "video-grid";
   videoGrid.classList.add("layout-" + count);
-  updateScreenShareLayout();
-}
-
-// ============================================================
-// Screen Share Layout (Google Meet style - CSS only)
-// ============================================================
-
-function updateScreenShareLayout() {
-  const allTiles = videoGrid.querySelectorAll(".video-tile");
-  allTiles.forEach((tile) => {
-    const tileUserId = tile.id.replace("tile-", "");
-    if (tileUserId === presenterId) {
-      tile.classList.add("ss-main");
-      tile.classList.remove("ss-strip-tile");
-      tile.style.order = "0";
-      tile.style.cursor = "default";
-      tile.onclick = null;
-    } else {
-      tile.classList.remove("ss-main");
-      tile.classList.add("ss-strip-tile");
-      tile.style.order = "1";
-      tile.style.cursor = "pointer";
-      // Click any strip tile to pin it as main
-      tile.onclick = (e) => {
-        e.preventDefault();
-        allTiles.forEach((t) => t.classList.remove("ss-pinned"));
-        tile.classList.toggle("ss-pinned");
-        if (tile.classList.contains("ss-pinned")) {
-          // Make this tile big
-          tile.style.order = "0";
-          tile.style.flex = "1 1 100%";
-          // Make presenter small
-          const presTile = document.getElementById("tile-" + presenterId);
-          if (presTile) {
-            presTile.style.order = "1";
-            presTile.style.flex = "";
-          }
-        } else {
-          // Restore presenter as main
-          tile.style.flex = "";
-          tile.style.order = "1";
-          const presTile = document.getElementById("tile-" + presenterId);
-          if (presTile) {
-            presTile.style.order = "0";
-            presTile.style.flex = "1 1 100%";
-          }
-        }
-      };
-    }
-  });
-
-  // Apply grid layout for screen share
-  if (presenterId) {
-    videoGrid.style.display = "flex";
-    videoGrid.style.flexDirection = "column";
-    videoGrid.style.padding = "0";
-  } else {
-    videoGrid.style.display = "";
-    videoGrid.style.flexDirection = "";
-    videoGrid.style.padding = "";
-    allTiles.forEach((tile) => {
-      tile.classList.remove("ss-main", "ss-strip-tile", "ss-pinned");
-      tile.style.order = "";
-      tile.style.flex = "";
-      tile.style.cursor = "";
-      tile.onclick = null;
-    });
-  }
 }
 
 // ============================================================
