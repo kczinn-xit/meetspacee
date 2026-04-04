@@ -336,14 +336,23 @@ async function createOfferToPeer(peerId) {
     console.log("negotiation needed for", peerId);
   };
 
-  peers.set(peerId, { pc, stream: null });
+  const peerEntry = { pc, stream: null };
+  peers.set(peerId, peerEntry);
 
   try {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+
+    // Verify PC wasn't closed while awaiting
+    if (pc.signalingState === "closed") {
+      peers.delete(peerId);
+      return;
+    }
+
     socket.emit("offer", { targetId: peerId, offer });
   } catch (e) {
     console.error("createOffer failed:", e);
+    if (pc.signalingState !== "closed") peers.delete(peerId);
   }
 }
 
