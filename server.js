@@ -7,45 +7,11 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// State: Map<roomId, Map<socketId, { name, micOn, camOn, handRaised }>>
+// Room state: Map<roomId, Map<socketId, { name, micOn, camOn, handRaised, isScreenSharing }>>
 const rooms = new Map();
 
-function getOrCreateRoom(roomId) {
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, new Map());
-  }
-  return rooms.get(roomId);
-}
-
-function cleanupSocket(socketId) {
-  for (const [roomId, peers] of rooms) {
-    if (peers.has(socketId)) {
-      peers.delete(socketId);
-      io.to(roomId).emit("participants-update", peersToSnapshot(peers));
-      if (peers.size === 0) {
-        rooms.delete(roomId);
-      }
-    }
-  }
-}
-
-function peersToSnapshot(peers) {
-  const arr = [];
-  for (const [sid, info] of peers) {
-    arr.push({
-      socketId: sid,
-      name: info.name,
-      micOn: info.micOn,
-      camOn: info.camOn,
-      handRaised: info.handRaised,
-    });
-  }
-  return arr;
-}
-
-function generateRoomId() {
-  return uuidv4().replace(/-/g, "").substring(0, 8).toUpperCase();
-}
+// Static files first
+app.use(express.static("public"));
 
 // Routes
 app.get("/", (req, res) => {
@@ -59,8 +25,6 @@ app.get("/room/:id", (req, res) => {
 app.get("/api/new-room", (req, res) => {
   res.json({ roomId: generateRoomId() });
 });
-
-app.use(express.static("public"));
 
 // Socket.io
 io.on("connection", (socket) => {
@@ -180,6 +144,32 @@ const MEETING_PASSWORD = "123forfivesix";
     cleanupSocket(socket.id);
   });
 });
+
+function generateRoomId() {
+  return uuidv4().slice(0, 8).toUpperCase();
+}
+
+function getOrCreateRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, new Map());
+  }
+  return rooms.get(roomId);
+}
+
+function peersToSnapshot(peers) {
+  return Array.from(peers.entries()).map(([socketId, data]) => ({
+    socketId,
+    name: data.name,
+    micOn: data.micOn,
+    camOn: data.camOn,
+    handRaised: data.handRaised,
+    isScreenSharing: data.isScreenSharing || false,
+  }));
+}
+
+function cleanupSocket(socketId) {
+  // Clean up any stale references (peers are cleaned up in disconnect handler)
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
