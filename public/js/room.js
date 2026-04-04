@@ -331,6 +331,17 @@ async function createOfferToPeer(peerId) {
     }
   };
 
+  // Guard: if ontrack fires after 3s the badge is still there, force-hide it
+  setTimeout(() => {
+    const connEl = document.getElementById("tile-conn-" + peerId);
+    if (connEl && !connEl.dataset.autoHidden) {
+      connEl.style.transition = "opacity 0.3s";
+      connEl.style.opacity = "0";
+      connEl.dataset.autoHidden = "true";
+      setTimeout(() => connEl.remove(), 300);
+    }
+  }, 3000);
+
   // When a track replaces (e.g. screen share → camera), update the video
   pc.onnegotiationneeded = async () => {
     console.log("negotiation needed for", peerId);
@@ -389,6 +400,18 @@ async function handleIncomingOffer(offer, senderId) {
       renderRemoteVideo(senderId, stream);
     }
   };
+
+  // Guard: if ontrack fires, the connection is at least receiving tracks.
+  // If the badge stays after 3s, force-hide it. It means the PC is working.
+  setTimeout(() => {
+    const connEl = document.getElementById("tile-conn-" + senderId);
+    if (connEl && !connEl.dataset.autoHidden) {
+      connEl.style.transition = "opacity 0.3s";
+      connEl.style.opacity = "0";
+      connEl.dataset.autoHidden = "true";
+      setTimeout(() => connEl.remove(), 300);
+    }
+  }, 3000);
 
   peers.set(senderId, { pc, stream: null });
 
