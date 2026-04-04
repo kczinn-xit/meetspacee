@@ -336,7 +336,11 @@ async function createOfferToPeer(peerId) {
   // Incoming tracks
   pc.ontrack = (e) => {
     console.log("ontrack for", peerId, "kind:", e.track.kind, "state:", e.track.readyState);
-    const stream = e.streams && e.streams[0];
+    let stream = e.streams && e.streams[0];
+    if (!stream) {
+      // Some browsers don't include streams in ontrack
+      stream = new MediaStream([e.track]);
+    }
     if (stream) {
       const data = peers.get(peerId);
       if (data) {
@@ -574,13 +578,16 @@ function renderRemoteVideo(socketId, stream) {
   video.setAttribute("autoplay", "");
   video.setAttribute("playsinline", "");
   video.srcObject = stream;
-  video.muted = false;
   tile.appendChild(video);
 
-  video.play().catch(() => {});
-
-  const overlay = document.createElement("div");
-  overlay.className = "tile-overlay";
+  // Mute briefly to bypass autoplay policy, then unmute
+  video.muted = true;
+  video.play().then(() => {
+    video.muted = false;
+    console.log("Remote video playing (audio unmuted) for", socketId);
+  }).catch((e) => {
+    console.warn("Remote video play failed:", e.message, "for", socketId);
+  });
 
   const nameEl = document.createElement("span");
   nameEl.className = "tile-name";
