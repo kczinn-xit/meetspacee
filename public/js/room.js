@@ -315,11 +315,21 @@ async function createOfferToPeer(peerId) {
   pc.onicecandidate = (e) => {
     if (e.candidate) {
       socket.emit("ice-candidate", { targetId: peerId, candidate: e.candidate });
+    } else {
+      console.log("ICE gathering complete for", peerId);
     }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log("ICE state for", peerId, ":", pc.iceConnectionState);
   };
 
   // Connection state
   pc.onconnectionstatechange = () => {
+    console.log("PC state for", peerId, ":", pc.connectionState);
+    if (pc.connectionState === "failed") {
+      console.log("  ICE state:", pc.iceConnectionState, "  signaling:", pc.signalingState);
+    }
     updateTileConnection(peerId, pc.connectionState);
   };
 
