@@ -156,15 +156,26 @@ function setupSocket(password) {
   });
 
   socket.on("room-peers", async (peerIds) => {
+    console.log("room-peers:", peerIds, "my id:", socket.id);
     for (const peerId of peerIds) {
-      await createOfferToPeer(peerId);
+      // Offerer election: only create offer if our socketId is alphabetically lower
+      if (socket.id < peerId) {
+        console.log("Creating offer to", peerId, "(I'm the offerer)");
+        await createOfferToPeer(peerId);
+      } else {
+        console.log("Not creating offer to", peerId, "(they are the offerer)");
+      }
     }
   });
 
   socket.on("peer-joined", ({ socketId, name }) => {
-    // Store name for display
+    console.log("peer-joined:", socketId, name, "my id:", socket.id);
     participantNames.set(socketId, name);
-    // Wait for them to send an offer
+    // If we're the offerer, send an offer to the newly joined peer
+    if (socket.id < socketId) {
+      console.log("New peer joined, creating offer to", socketId);
+      createOfferToPeer(socketId);
+    }
   });
 
   socket.on("offer", async ({ offer, senderId }) => {
