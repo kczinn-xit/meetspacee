@@ -52,6 +52,10 @@ let isScreenSharing = false;
 let displayStream = null; // keep reference to stop it later
 let isRecording = false;
 
+// Screen share layout: who is presenting
+let presenterId = null; // socketId of who is sharing screen
+let pinnedTile = null; // socketId of manually pinned tile (user clicked it)
+
 const recorder = new RecordingManager();
 
 // ============================================================
@@ -218,21 +222,39 @@ function setupSocket(password) {
   socket.on("screenshare-update", ({ socketId, isScreenSharing }) => {
     console.log("Peer", socketId, "screen share:", isScreenSharing);
     const tile = document.getElementById("tile-" + socketId);
-    if (!tile) return;
 
-    const video = tile.querySelector("video");
-    if (!video) return;
-
-    // Just update the CSS — the MediaStream is already updated by replaceTrack
     if (isScreenSharing) {
-      video.classList.add("screen-share");
+      // Mark this user as the presenter
+      presenterId = socketId;
+      // Update the tile's video to contain mode
+      if (tile) {
+        const video = tile.querySelector("video");
+        if (video) {
+          video.classList.add("screen-share");
+          video.muted = false;
+          video.play().catch(() => {});
+        }
+      }
+      // Add presenter badge
+      if (tile && !tile.querySelector(".presenter-badge")) {
+        const badge = document.createElement("div");
+        badge.className = "presenter-badge";
+        const name = participantNames.get(socketId) || "Participant";
+        badge.textContent = name + " is presenting";
+        tile.appendChild(badge);
+      }
     } else {
-      video.classList.remove("screen-share");
+      // Remove presenter state
+      if (presenterId === socketId) presenterId = null;
+      if (tile) {
+        const badge = tile.querySelector(".presenter-badge");
+        if (badge) badge.remove();
+        const video = tile.querySelector("video");
+        if (video) video.classList.remove("screen-share");
+      }
     }
 
-    // Re-trigger playback in case the track changed
-    video.muted = false;
-    video.play().catch(() => {});
+    updateScreenShareLayout();
   });
 
   socket.on("participants-update", (participants) => {
@@ -255,6 +277,12 @@ function setupSocket(password) {
   });
 
   socket.on("disconnect", () => {
+    if (presenterId && socket.id === presenterId) {
+      presenterId = null;
+    }
+    if (pinnedTile === socket.id) {
+      pinnedTile = null;
+    }
     headerConnection.textContent = "Disconnected";
     headerConnection.style.color = "#e05252";
     for (const [sid, data] of [...peers]) {
@@ -665,7 +693,190 @@ function updateGridLayout(count) {
   if (count <= 0) count = 1;
   if (count > 6) count = 6;
   videoGrid.className = "video-grid";
-  videoGrid.classList.add("layout-" + count);
+  if (presenterId && !pinnedTile) {
+    videoGrid.classList.add("layout-" + count);
+    updateScreenShareLayout();
+  } else {
+    videoGrid.classList.add("layout-" + count);
+  }
+}
+
+// ============================================================
+// Screen Share Layout (Google Meet style)
+// ============================================================
+
+function updateScreenShareLayout() {
+  const isPresenting = !!presenterId;
+
+  if (!isPresenting) {
+    // Restore normal grid
+    videoGrid.classList.remove("screenshare-active");
+    const count = videoGrid.querySelectorAll(".video-tile").length;
+    updateGridLayout(count || 1);
+    return;
+  }
+
+  // If we have a presenter, switch to screen share layout
+  videoGrid.classList.add("screenshare-active");
+  videoGrid.classList.add("layout-2"); // override to ensure we have space
+
+  // Check if layout is already applied
+  const mainEl = document.getElementById("screenshare-main-wrapper");
+  if (!mainEl) {
+    // First time: restructure the DOM
+    buildScreenShareLayout();
+  } else {
+    // Update: move tiles between main and strip
+    moveTilesToScreenShareLayout();
+  }
+}
+
+function buildScreenShareLayout() {
+  // Remove any prior structure
+  const existingMain = document.getElementById("screenshare-main-wrapper");
+  const existingStrip = document.getElementById("screenshare-strip-wrapper");
+  if (existingMain) existingMain.remove();
+  if (existingStrip) existingStrip.remove();
+
+  // Create the main screen area (presenter's screen)
+  const mainWrapper = document.createElement("div");
+  mainWrapper.id = "screenshare-main-wrapper";
+  mainWrapper.className = "screenshare-main";
+
+  // Create the bottom strip (other participants)
+  const stripWrapper = document.createElement("div");
+  stripWrapper.id = "screenshare-strip-wrapper";
+  stripWrapper.className = "screenshare-strip";
+
+  // Reorder: grid gets main first, strip second
+  videoGrid.style.display = "flex";
+  videoGrid.style.flexDirection = "column";
+  videoGrid.style.gap = "0.5rem";
+  videoGrid.style.padding = "0";
+  videoGrid.style.alignContent = "stretch";
+  videoGrid.appendChild(mainWrapper);
+  videoGrid.appendChild(stripWrapper);
+
+  moveTilesToScreenShareLayout();
+}
+
+function moveTilesToScreenShareLayout() {
+  const mainWrapper = document.getElementById("screenshare-main-wrapper");
+  const stripWrapper = document.getElementById("screenshare-strip-wrapper");
+  if (!mainWrapper || !stripWrapper) return;
+
+  const allTiles = [...videoGrid.querySelectorAll(".video-tile")];
+
+  for (const tile of allTiles) {
+    // Skip if already in the right place
+    if (tile === mainWrapper || tile === stripWrapper) continue;
+
+    // Determine where the tile should go
+    if (tile.id === "tile-" + presenterId || tile.id === "tile-" + pinnedTile) {
+      // Presenter tile goes to main
+      if (tile.parentElement !== mainWrapper) {
+        mainWrapper.appendChild(tile);
+        tile.style.border = "none";
+        tile.style.borderRadius = "16px";
+      }
+    } else {
+      // Everyone else goes to the strip
+      if (tile.parentElement !== stripWrapper) {
+        stripWrapper.appendChild(tile);
+        tile.style.border = "2px solid transparent";
+        tile.style.borderRadius = "10px";
+        tile.style.cursor = "pointer";
+
+        // Click on strip tile to pin/enlarge
+        tile.onclick = (e) => {
+          e.preventDefault();
+          tilePinToMain(tile.id.replace("tile-", ""), tile);
+        };
+      }
+    }
+  }
+
+  // Make main tile clickable to unpin
+  const mainTile = mainWrapper.querySelector(".video-tile");
+  if (mainTile && !mainTile.dataset.unpinHandler) {
+    mainTile.dataset.unpinHandler = "true";
+    mainTile.onclick = () => {
+      unpinTile();
+    };
+  }
+}
+
+function tilePinToMain(socketId, tile) {
+  // If already pinned, unpin
+  if (pinnedTile === socketId) {
+    unpinTile();
+    return;
+  }
+
+  pinnedTile = socketId;
+
+  // Move this tile to main, presenter to strip
+  const mainWrapper = document.getElementById("screenshare-main-wrapper");
+  const stripWrapper = document.getElementById("screenshare-strip-wrapper");
+  if (!mainWrapper || !stripWrapper) return;
+
+  // Move pinned tile to main
+  mainWrapper.appendChild(tile);
+  tile.style.border = "2px solid #4f6ef7";
+  tile.style.borderRadius = "16px";
+
+  // Show presenter badge if no presenter
+  if (!presenterId) {
+    const existingBadge = mainWrapper.querySelector(".presenter-badge");
+    if (!existingBadge) {
+      const badge = document.createElement("div");
+      badge.className = "presenter-badge";
+      badge.style.background = "rgba(79, 110, 247, 0.9)";
+      const name = participantNames.get(socketId) || "Participant";
+      badge.textContent = name;
+      tile.appendChild(badge);
+    }
+  }
+
+  // Move presenter back to strip if they were in main
+  if (presenterId) {
+    const presenterTile = document.getElementById("tile-" + presenterId);
+    if (presenterTile && presenterTile.parentElement === mainWrapper) {
+      stripWrapper.appendChild(presenterTile);
+    }
+  }
+}
+
+function unpinTile() {
+  pinnedTile = null;
+
+  const mainWrapper = document.getElementById("screenshare-main-wrapper");
+  const stripWrapper = document.getElementById("screenshare-strip-wrapper");
+  if (!mainWrapper || !stripWrapper) {
+    updateScreenShareLayout();
+    return;
+  }
+
+  // Remove any badge we added when pinning
+  const mainTile = mainWrapper.querySelector(".video-tile");
+  if (mainTile) {
+    const badge = mainTile.querySelector(".presenter-badge");
+    if (badge && badge.style.background.includes("79, 110, 247")) {
+      badge.remove();
+    }
+    mainTile.onclick = () => unpinTile();
+  }
+
+  // Restore presenter back to main
+  if (presenterId) {
+    const presenterTile = document.getElementById("tile-" + presenterId);
+    if (presenterTile && presenterTile.parentElement !== mainWrapper) {
+      mainWrapper.prependChild(presenterTile);
+    }
+  }
+
+  // Rebuild the layout
+  moveTilesToScreenShareLayout();
 }
 
 // ============================================================
