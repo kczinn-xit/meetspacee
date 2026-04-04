@@ -5,7 +5,13 @@ const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  cors: {
+    origin: "*",
+  },
+});
 
 // Room state: Map<roomId, Map<socketId, { name, micOn, camOn, handRaised, isScreenSharing }>>
 const rooms = new Map();
@@ -28,9 +34,12 @@ app.get("/api/new-room", (req, res) => {
 
 // Socket.io
 io.on("connection", (socket) => {
-const MEETING_PASSWORD = "123forfivesix";
+  console.log("Socket connected:", socket.id);
+  const MEETING_PASSWORD = "123forfivesix";
 
   socket.on("join-room", ({ roomId, name, password }) => {
+    console.log("join-room:", { roomId, name }, "socket:", socket.id);
+
     if (password !== MEETING_PASSWORD) {
       socket.emit("join-error", "Incorrect password");
       socket.disconnect(true);
@@ -48,6 +57,7 @@ const MEETING_PASSWORD = "123forfivesix";
       camOn: true,
       handRaised: false,
     });
+    console.log("Room", roomId, "peers:", Array.from(peers.keys()));
 
     // Send existing peers to joiner (socketIds only, no own id)
     const existing = [];
